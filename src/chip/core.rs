@@ -1,3 +1,5 @@
+use std::intrinsics::unreachable;
+
 use super::errors::ChipError;
 use crate::chip::font::FONT_SET;
 
@@ -47,17 +49,13 @@ impl Chip8 {
         }
     }
 
-    fn fetch(&self, addr: usize) -> Result<usize, ChipError> {
-        if addr > self.ram.len() {
-            return Err(ChipError::AddressBoundaryError);
-        }
-
+    pub fn fetch(&self, addr: usize) -> usize {
         // most significant byte
-        let mbyte = self.ram[addr as usize];
+        let mbyte = self.ram[addr];
         // less significant byte
-        let lbyte = self.ram[(addr + 1) as usize];
+        let lbyte = self.ram[addr + 1];
 
-        Ok(((mbyte << 8) | lbyte) as usize)
+        ((mbyte << 8) | lbyte) as usize
     }
 
     fn to_nibbles(&self, opcode: usize) -> (u8, u8, u8, u8) {
@@ -69,22 +67,34 @@ impl Chip8 {
         )
     }
 
-    pub fn execute(&mut self) -> Result<(), ChipError> {
-        let opcode: usize = self.fetch(self.pc)?;
+    pub fn execute(&mut self) {
+        let opcode: usize = self.fetch(self.pc);
         let nibbles = self.to_nibbles(opcode);
 
         // function parameters
         let nnn = (opcode & 0x0FFF) as usize;
-        let x = (opcode & 0x0F00) as usize;
-        let kk = (opcode & 0x00FF) as usize;
+        let kk = (opcode & 0x00FF) as u8;
+        let x = nibbles.1 as usize;
+        let y = nibbles.2 as usize;
 
         match nibbles {
             (0x00, 0x00, 0x0E, 0x00) => self.op_00e0(),
             (0x00, 0x00, 0x0E, 0x0E) => self.op_00ee(),
-            (0x1, _, _, _) => self.op_1nnn(nnn),
+            (0x01, _, _, _) => self.op_1nnn(nnn),
             (0x02, _, _, _) => self.op_2nnn(nnn),
-            (0x3, _, _, _) => self.op_3xkk(x, kk),
-            _ => Err(ChipError::InvalidOpcode),
+            (0x03, _, _, _) => self.op_3xkk(x, kk),
+            (0x04, _, _, _) => self.op_4xkk(x, kk),
+            (0x05, _, _, 0x00) => self.op_5ky0(x, y),
+            (0x06, _, _, _) => self.op_6kk(x, kk),
+            (0x07, _, _, _) => self.op_7xkk(x, kk),
+            (0x08, _, _, 0x00) => self.op_8xy0(x, y),
+            (0x08, _, _, 0x01) => self.op_8xy1(x, y),
+            (0x08, _, _, 0x02) => self.op_8xy2(x, y),
+            (0x08, _, _, 0x03) => self.op_8xy3(x, y),
+            (0x08, _, _, 0x04) => self.op_8xy4(x, y),
+            (0x08, _, _, 0x05) => self.op_8xy5(x, y),
+            (0x08, _, _, 0x06) => self.op_8x06(x),
+            _ => unreachable!(),
         }
     }
 
@@ -93,44 +103,118 @@ impl Chip8 {
     // -------------------------------
 
     // CLS - clear the display
-    fn op_00e0(&mut self) -> Result<(), ChipError> {
+    fn op_00e0(&mut self) {
         for i in 0..SCREEN_HEIGHT {
             for j in 0..SCREEN_WIDTH {
                 self.screen[i][j] = 0;
             }
         }
-
         self.pc += OPCODE_SIZE;
-        Ok(())
     }
 
     // RET - return from a subrutine
-    fn op_00ee(&mut self) -> Result<(), ChipError> {
+    fn op_00ee(&mut self) {
         self.sp -= 1;
         self.pc = self.stack[self.sp as usize];
-        Ok(())
     }
 
     // JP - Jump to location nnn
-    fn op_1nnn(&mut self, addr: usize) -> Result<(), ChipError> {
+    fn op_1nnn(&mut self, addr: usize) {
         self.pc = addr;
-        Ok(())
     }
 
     // CALL - call subrutine at nnn
-    fn op_2nnn(&mut self, addr: usize) -> Result<(), ChipError> {
+    fn op_2nnn(&mut self, addr: usize) {
         self.stack[self.sp as usize] = self.pc + OPCODE_SIZE;
         self.pc = addr;
         self.sp += 1;
-        Ok(())
     }
 
     // SE - skip next instruction if Vx == kk
-    fn op_3xkk(&mut self, x: usize, kk: usize) -> Result<(), ChipError> {
+    fn op_3xkk(&mut self, x: usize, kk: u8) {
         let vx = self.regs[x];
-        if vx as usize == kk {
+        if vx == kk {
             self.pc += 2 * OPCODE_SIZE;
         }
-        Ok(())
+    }
+
+    // SNE - skip next instruction if Vx != kk.
+    fn op_4xkk(&mut self, x: usize, kk: u8) {
+        let vx = self.regs[x];
+        if vx != kk {
+            self.pc += 2 * OPCODE_SIZE;
+        }
+    }
+
+    // SE - skip next instruction if Vx == Vy
+    fn op_5ky0(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        if vx == vy {
+            self.pc = 2 * OPCODE_SIZE;
+        }
+    }
+
+    // LD - sets the value kk into Vx register
+    fn op_6kk(&mut self, x: usize, kk: u8) {
+        self.regs[x] = kk as u8;
+    }
+
+    // ADD - adds the value kk to Vx register
+    fn op_7xkk(&mut self, x: usize, kk: u8) {
+        let vx = self.regs[x];
+        self.regs[x] = vx + kk;
+    }
+
+    // LD - sets the value Vy register into Vx register
+    fn op_8xy0(&mut self, x: usize, y: usize) {
+        let vy = self.regs[y];
+        self.regs[x] = vy;
+    }
+
+    // OR - Performs a bitwise OR on the values of Vx and Vy, then stores the result in Vx
+    fn op_8xy1(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        self.regs[x] = vx | vy;
+    }
+
+    // AND - Performs a bitwise AND on the values of Vx and Vy, then stores the result in Vx
+    fn op_8xy2(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        self.regs[x] = vx & vy;
+    }
+
+    // XOR - Performs a bitwise XOR on the values of Vx and Vy, then stores the result in Vx
+    fn op_8xy3(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        self.regs[x] = vx ^ vy;
+    }
+
+    // ADD - Adds the values of Vx and Vy, checks overflow and then stores the result in Vx
+    fn op_8xy4(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x] as u16;
+        let vy = self.regs[y] as u16;
+        let result = vx + vy;
+        self.regs[0x0F] = if result > 0xFF { 1 } else { 0 };
+        self.regs[x] = result as u8;
+    }
+
+    // SUB - if Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx
+    fn op_8xy5(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        self.regs[0x0F] = if vx > vy { 1 } else { 0 };
+        self.regs[x] = vx - vy;
+    }
+
+    // SHR -  If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0. Then Vx is divided by 2.
+    fn op_8x06(&mut self, x: usize) {
+        let vx = self.regs[x];
+        let bit = vx & 0x01;
+        self.regs[0x0F] = if bit == 1 { 1 } else { 0 };
+        self.regs[x] = vx >> 1;
     }
 }
