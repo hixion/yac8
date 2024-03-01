@@ -4,12 +4,13 @@ use crate::chip::font::FONT_SET;
 const MEM_SIZE: usize = 0x1000;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
+const OPCODE_SIZE: usize = 2;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Chip8 {
-    i: u16,    // index register
-    pc: u16,   // program counter
+    i: usize,  // index register
+    pc: usize, // program counter
     sp: u8,    // stack pointer
     st: usize, // sound timer register
     dt: usize, // delay timer register
@@ -17,7 +18,7 @@ pub struct Chip8 {
     regs: [u8; 0x10],
     delay_timer: u8,
     sound_timer: u8,
-    stack: [u16; 0x10],
+    stack: [usize; 0x10],
     keypad: [bool; 0x10],
     screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
@@ -46,28 +47,52 @@ impl Chip8 {
         }
     }
 
-    fn fetch(&self, addr: u16) -> Result<u16, ChipError> {
-        if addr > self.ram.len() as u16 {
+    fn fetch(&self, addr: usize) -> Result<usize, ChipError> {
+        if addr > self.ram.len() {
             return Err(ChipError::AddressBoundaryError);
         }
 
         // most significant byte
-        let mbyte: u8 = self.ram[addr as usize];
+        let mbyte = self.ram[addr as usize];
         // less significant byte
-        let lbyte: u8 = self.ram[(addr + 1) as usize];
+        let lbyte = self.ram[(addr + 1) as usize];
 
-        Ok(((mbyte << 8) | lbyte) as u16)
+        Ok(((mbyte << 8) | lbyte) as usize)
+    }
+
+    fn to_nibbles(&self, opcode: usize) -> (u8, u8, u8, u8) {
+        (
+            ((opcode & 0xF000) >> 12) as u8,
+            ((opcode & 0x0F00) >> 8) as u8,
+            ((opcode & 0x00F0) >> 4) as u8,
+            (opcode & 0x000F) as u8,
+        )
     }
 
     pub fn execute(&mut self) -> Result<(), ChipError> {
-        let instr: u16 = self.fetch(self.pc)?;
+        let opcode: usize = self.fetch(self.pc)?;
+        let nibbles = self.to_nibbles(opcode);
 
-        match instr {
-            0x00E0 => self.op_00e0(),
+        // function parameters
+        let nnn = (opcode & 0x0FFF) as usize;
+        let x = (opcode & 0x0F00) as usize;
+        let kk = (opcode & 0x00FF) as usize;
+
+        match nibbles {
+            (0x00, 0x00, 0x0E, 0x00) => self.op_00e0(),
+            (0x00, 0x00, 0x0E, 0x0E) => self.op_00ee(),
+            (0x1, _, _, _) => self.op_1nnn(nnn),
+            (0x02, _, _, _) => self.op_2nnn(nnn),
+            (0x3, _, _, _) => self.op_3xkk(x, kk),
             _ => Err(ChipError::InvalidOpcode),
         }
     }
 
+    // -------------------------------
+    //           INSTRUCTIONS
+    // -------------------------------
+
+    // CLS - clear the display
     fn op_00e0(&mut self) -> Result<(), ChipError> {
         for i in 0..SCREEN_HEIGHT {
             for j in 0..SCREEN_WIDTH {
@@ -75,7 +100,37 @@ impl Chip8 {
             }
         }
 
-        self.pc += 1;
+        self.pc += OPCODE_SIZE;
+        Ok(())
+    }
+
+    // RET - return from a subrutine
+    fn op_00ee(&mut self) -> Result<(), ChipError> {
+        self.sp -= 1;
+        self.pc = self.stack[self.sp as usize];
+        Ok(())
+    }
+
+    // JP - Jump to location nnn
+    fn op_1nnn(&mut self, addr: usize) -> Result<(), ChipError> {
+        self.pc = addr;
+        Ok(())
+    }
+
+    // CALL - call subrutine at nnn
+    fn op_2nnn(&mut self, addr: usize) -> Result<(), ChipError> {
+        self.stack[self.sp as usize] = self.pc + OPCODE_SIZE;
+        self.pc = addr;
+        self.sp += 1;
+        Ok(())
+    }
+
+    // SE - skip next instruction if Vx == kk
+    fn op_3xkk(&mut self, x: usize, kk: usize) -> Result<(), ChipError> {
+        let vx = self.regs[x];
+        if vx as usize == kk {
+            self.pc += 2 * OPCODE_SIZE;
+        }
         Ok(())
     }
 }
