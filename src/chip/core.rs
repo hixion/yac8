@@ -82,7 +82,7 @@ impl Chip8 {
             (0x03, _, _, _) => self.op_3xkk(x, kk),
             (0x04, _, _, _) => self.op_4xkk(x, kk),
             (0x05, _, _, 0x00) => self.op_5ky0(x, y),
-            (0x06, _, _, _) => self.op_6kk(x, kk),
+            (0x06, _, _, _) => self.op_6xkk(x, kk),
             (0x07, _, _, _) => self.op_7xkk(x, kk),
             (0x08, _, _, 0x00) => self.op_8xy0(x, y),
             (0x08, _, _, 0x01) => self.op_8xy1(x, y),
@@ -92,6 +92,10 @@ impl Chip8 {
             (0x08, _, _, 0x05) => self.op_8xy5(x, y),
             (0x08, _, _, 0x06) => self.op_8xy6(x),
             (0x08, _, _, 0x07) => self.op_8xy7(x, y),
+            (0x08, _, _, 0x0E) => self.op_8xye(x),
+            (0x09, _, _, 0x00) => self.op_9xy0(x, y),
+            (0x0A, _, _, _) => self.op_annn(nnn),
+            (0x0B, _, _, _) => self.op_bnnn(nnn),
             _ => unreachable!(),
         }
     }
@@ -124,8 +128,8 @@ impl Chip8 {
     // CALL - call subrutine at nnn
     fn op_2nnn(&mut self, addr: usize) {
         self.stack[self.sp as usize] = self.pc + OPCODE_SIZE;
-        self.pc = addr;
         self.sp += 1;
+        self.pc = addr;
     }
 
     // SE - skip next instruction if Vx == kk
@@ -160,7 +164,7 @@ impl Chip8 {
     }
 
     // LD - sets the value kk into Vx register
-    fn op_6kk(&mut self, x: usize, kk: u8) {
+    fn op_6xkk(&mut self, x: usize, kk: u8) {
         self.regs[x] = kk as u8;
         self.pc += OPCODE_SIZE;
     }
@@ -231,12 +235,43 @@ impl Chip8 {
         self.pc += OPCODE_SIZE;
     }
 
-    // SUB - if Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx
+    // SUBN - if Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx
     fn op_8xy7(&mut self, x: usize, y: usize) {
         let vx = self.regs[x];
         let vy = self.regs[y];
         self.regs[0x0F] = if vy > vx { 1 } else { 0 };
         self.regs[x] = vy - vx;
         self.pc += OPCODE_SIZE;
+    }
+
+    // SHL - If the most-significant bit of Vx is 1, then VF is set to 1, otherwise to 0. Then Vx is multiplied by 2.
+    fn op_8xye(&mut self, x: usize) {
+        let vx = self.regs[x];
+        self.regs[0x0F] = (vx & 0x80) >> 7;
+        self.regs[x] = vx << 1;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // SNE - Skip next instruction if Vx != Vy
+    fn op_9xy0(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        if vx != vy {
+            self.pc += 2 * OPCODE_SIZE;
+        } else {
+            self.pc += OPCODE_SIZE;
+        }
+    }
+
+    // LD - Set I register with the value of nnn
+    fn op_annn(&mut self, nnn: usize) {
+        self.i = nnn;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // JP - Jump to location nnn + V0
+    fn op_bnnn(&mut self, nnn: usize) {
+        let addr = self.regs[0x00] as usize + nnn;
+        self.pc = addr;
     }
 }
