@@ -1,6 +1,3 @@
-use std::intrinsics::unreachable;
-
-use super::errors::ChipError;
 use crate::chip::font::FONT_SET;
 
 const MEM_SIZE: usize = 0x1000;
@@ -51,9 +48,9 @@ impl Chip8 {
 
     pub fn fetch(&self, addr: usize) -> usize {
         // most significant byte
-        let mbyte = self.ram[addr];
+        let mbyte = self.ram[addr] as usize;
         // less significant byte
-        let lbyte = self.ram[addr + 1];
+        let lbyte = self.ram[addr + 1] as usize;
 
         ((mbyte << 8) | lbyte) as usize
     }
@@ -93,7 +90,8 @@ impl Chip8 {
             (0x08, _, _, 0x03) => self.op_8xy3(x, y),
             (0x08, _, _, 0x04) => self.op_8xy4(x, y),
             (0x08, _, _, 0x05) => self.op_8xy5(x, y),
-            (0x08, _, _, 0x06) => self.op_8x06(x),
+            (0x08, _, _, 0x06) => self.op_8xy6(x),
+            (0x08, _, _, 0x07) => self.op_8xy7(x, y),
             _ => unreachable!(),
         }
     }
@@ -135,6 +133,8 @@ impl Chip8 {
         let vx = self.regs[x];
         if vx == kk {
             self.pc += 2 * OPCODE_SIZE;
+        } else {
+            self.pc += OPCODE_SIZE;
         }
     }
 
@@ -143,6 +143,8 @@ impl Chip8 {
         let vx = self.regs[x];
         if vx != kk {
             self.pc += 2 * OPCODE_SIZE;
+        } else {
+            self.pc += OPCODE_SIZE;
         }
     }
 
@@ -152,24 +154,29 @@ impl Chip8 {
         let vy = self.regs[y];
         if vx == vy {
             self.pc = 2 * OPCODE_SIZE;
+        } else {
+            self.pc += OPCODE_SIZE;
         }
     }
 
     // LD - sets the value kk into Vx register
     fn op_6kk(&mut self, x: usize, kk: u8) {
         self.regs[x] = kk as u8;
+        self.pc += OPCODE_SIZE;
     }
 
     // ADD - adds the value kk to Vx register
     fn op_7xkk(&mut self, x: usize, kk: u8) {
         let vx = self.regs[x];
         self.regs[x] = vx + kk;
+        self.pc += OPCODE_SIZE;
     }
 
     // LD - sets the value Vy register into Vx register
     fn op_8xy0(&mut self, x: usize, y: usize) {
         let vy = self.regs[y];
         self.regs[x] = vy;
+        self.pc += OPCODE_SIZE;
     }
 
     // OR - Performs a bitwise OR on the values of Vx and Vy, then stores the result in Vx
@@ -177,6 +184,7 @@ impl Chip8 {
         let vx = self.regs[x];
         let vy = self.regs[y];
         self.regs[x] = vx | vy;
+        self.pc += OPCODE_SIZE;
     }
 
     // AND - Performs a bitwise AND on the values of Vx and Vy, then stores the result in Vx
@@ -184,6 +192,7 @@ impl Chip8 {
         let vx = self.regs[x];
         let vy = self.regs[y];
         self.regs[x] = vx & vy;
+        self.pc += OPCODE_SIZE;
     }
 
     // XOR - Performs a bitwise XOR on the values of Vx and Vy, then stores the result in Vx
@@ -191,6 +200,7 @@ impl Chip8 {
         let vx = self.regs[x];
         let vy = self.regs[y];
         self.regs[x] = vx ^ vy;
+        self.pc += OPCODE_SIZE;
     }
 
     // ADD - Adds the values of Vx and Vy, checks overflow and then stores the result in Vx
@@ -200,6 +210,7 @@ impl Chip8 {
         let result = vx + vy;
         self.regs[0x0F] = if result > 0xFF { 1 } else { 0 };
         self.regs[x] = result as u8;
+        self.pc += OPCODE_SIZE;
     }
 
     // SUB - if Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx
@@ -208,13 +219,24 @@ impl Chip8 {
         let vy = self.regs[y];
         self.regs[0x0F] = if vx > vy { 1 } else { 0 };
         self.regs[x] = vx - vy;
+        self.pc += OPCODE_SIZE;
     }
 
     // SHR -  If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0. Then Vx is divided by 2.
-    fn op_8x06(&mut self, x: usize) {
+    fn op_8xy6(&mut self, x: usize) {
         let vx = self.regs[x];
         let bit = vx & 0x01;
         self.regs[0x0F] = if bit == 1 { 1 } else { 0 };
         self.regs[x] = vx >> 1;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // SUB - if Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx
+    fn op_8xy7(&mut self, x: usize, y: usize) {
+        let vx = self.regs[x];
+        let vy = self.regs[y];
+        self.regs[0x0F] = if vy > vx { 1 } else { 0 };
+        self.regs[x] = vy - vx;
+        self.pc += OPCODE_SIZE;
     }
 }
