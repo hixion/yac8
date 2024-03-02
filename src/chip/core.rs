@@ -1,4 +1,5 @@
 use crate::chip::font::FONT_SET;
+use rand::Rng;
 
 const MEM_SIZE: usize = 0x1000;
 const SCREEN_WIDTH: usize = 64;
@@ -32,7 +33,7 @@ impl Chip8 {
 
         Chip8 {
             i: 0,
-            pc: 0,
+            pc: 0x200,
             sp: 0,
             st: 0,
             dt: 0,
@@ -73,6 +74,7 @@ impl Chip8 {
         let kk = (opcode & 0x00FF) as u8;
         let x = nibbles.1 as usize;
         let y = nibbles.2 as usize;
+        let n = nibbles.3 as usize;
 
         match nibbles {
             (0x00, 0x00, 0x0E, 0x00) => self.op_00e0(),
@@ -96,6 +98,8 @@ impl Chip8 {
             (0x09, _, _, 0x00) => self.op_9xy0(x, y),
             (0x0A, _, _, _) => self.op_annn(nnn),
             (0x0B, _, _, _) => self.op_bnnn(nnn),
+            (0x0C, _, _, _) => self.op_cxkk(x, kk),
+            (0x0D, _, _, _) => self.op_dxyn(x, y, n),
             _ => unreachable!(),
         }
     }
@@ -273,5 +277,36 @@ impl Chip8 {
     fn op_bnnn(&mut self, nnn: usize) {
         let addr = self.regs[0x00] as usize + nnn;
         self.pc = addr;
+    }
+
+    // RND - Set Vx = random Byte AND kk
+    fn op_cxkk(&mut self, x: usize, kk: u8) {
+        let mut rng = rand::thread_rng();
+        let rand_num: u8 = rng.gen_range(0..255);
+        self.regs[x] = rand_num & kk;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // DRW - Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
+    // The interpreter reads n bytes from memory, starting at the address
+    // stored in I. These bytes are then displayed as sprites on screen at
+    // coordinates (Vx, Vy). Sprites are XORed onto the existing screen.
+    // If this causes any pixels to be erased, VF is set to 1, otherwise
+    // it is set to 0. If the sprite is positioned so part of it is outside
+    // the coordinates of the display, it wraps around to the opposite side
+    // of the screen.
+    fn op_dxyn(&mut self, x: usize, y: usize, n: usize) {
+        self.regs[0x0F] = 0;
+        for byte in 0..n {
+            let sprite = self.ram[self.i + byte];
+            let cy = (self.regs[y] as usize + byte) % SCREEN_HEIGHT;
+            for bit in 0..8 {
+                // for each bit from the most significant to the lest
+                let cx = (self.regs[x] as usize + bit) % SCREEN_WIDTH;
+                let pixel = sprite >> (7 - bit) & 1;
+                self.regs[0x0F] |= pixel & self.screen[cx][cy];
+                self.screen[cx][cy] = pixel ^ self.screen[cx][cy];
+            }
+        }
     }
 }
