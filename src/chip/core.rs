@@ -21,6 +21,9 @@ pub struct Chip8 {
     stack: [usize; 0x10],
     keypad: [bool; 0x10],
     screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+    // auxiliar variables
+    await_key: bool,
+    keypad_reg: usize,
 }
 
 impl Chip8 {
@@ -44,6 +47,19 @@ impl Chip8 {
             stack: [0; 0x10],
             keypad: [false; 0x10],
             screen: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
+            await_key: false,
+            keypad_reg: 0,
+        }
+    }
+
+    pub fn init(&mut self) {
+        loop {
+            if self.await_key {
+                while self.await_key {}
+            }
+
+            let opcode = self.fetch(self.pc);
+            self.execute(opcode);
         }
     }
 
@@ -65,8 +81,7 @@ impl Chip8 {
         )
     }
 
-    pub fn execute(&mut self) {
-        let opcode: usize = self.fetch(self.pc);
+    pub fn execute(&mut self, opcode: usize) {
         let nibbles = self.to_nibbles(opcode);
 
         // function parameters
@@ -100,6 +115,17 @@ impl Chip8 {
             (0x0B, _, _, _) => self.op_bnnn(nnn),
             (0x0C, _, _, _) => self.op_cxkk(x, kk),
             (0x0D, _, _, _) => self.op_dxyn(x, y, n),
+            (0x0E, _, 0x09, 0x0E) => self.op_ex9e(x),
+            (0x0E, _, 0x0A, 0x01) => self.op_exa1(x),
+            (0x0F, _, 0x00, 0x07) => self.op_fx07(x),
+            (0x0F, _, 0x00, 0x0A) => self.op_fx0a(x),
+            (0x0F, _, 0x01, 0x05) => self.op_fx15(x),
+            (0x0F, _, 0x01, 0x08) => self.op_fx18(x),
+            (0x0F, _, 0x01, 0x0E) => self.op_fx1e(x),
+            (0x0F, _, 0x02, 0x09) => self.op_fx29(x),
+            (0x0F, _, 0x03, 0x03) => self.op_fx33(x),
+            (0x0F, _, 0x05, 0x05) => self.op_fx55(x),
+            (0x0F, _, 0x06, 0x05) => self.op_fx65(x),
             _ => unreachable!(),
         }
     }
@@ -308,5 +334,88 @@ impl Chip8 {
                 self.screen[cx][cy] = pixel ^ self.screen[cx][cy];
             }
         }
+        self.pc += OPCODE_SIZE;
+    }
+
+    // SKP - Skip next instruction if key with the value of Vx is pressed
+    fn op_ex9e(&mut self, x: usize) {
+        let vx = self.regs[x] as usize;
+        if self.keypad[vx] {
+            self.pc += 2 * OPCODE_SIZE;
+        } else {
+            self.pc += OPCODE_SIZE;
+        }
+    }
+
+    // SKNP - Skip next instruction if key with the value of Vx is not pressed
+    fn op_exa1(&mut self, x: usize) {
+        let vx = self.regs[x] as usize;
+        if !self.keypad[vx] {
+            self.pc += 2 * OPCODE_SIZE;
+        } else {
+            self.pc += OPCODE_SIZE;
+        }
+    }
+
+    // LD - Load the value dt of into Vx
+    fn op_fx07(&mut self, x: usize) {
+        self.regs[x] = self.dt as u8;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - Execution stops until a key is pressed
+    fn op_fx0a(&mut self, x: usize) {
+        self.await_key = true;
+        self.keypad_reg = x;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - Load the value Vx into Dt
+    fn op_fx15(&mut self, x: usize) {
+        self.dt = self.regs[x] as usize;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - St is equal to the value of Vx
+    fn op_fx18(&mut self, x: usize) {
+        self.st = self.regs[x] as usize;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // ADD - Add the vaues of I and Vx and stores it in I
+    fn op_fx1e(&mut self, x: usize) {
+        self.i = self.i + self.regs[x] as usize;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - Stores the value of Vx that indicates the position of hex sprite in I
+    fn op_fx29(&mut self, x: usize) {
+        self.i = (self.regs[x] as usize) * 5;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - Store BCD representation of Vx in memory locations I, I+1, I+2
+    fn op_fx33(&mut self, x: usize) {
+        let vx = self.regs[x];
+        self.ram[self.i] = vx / 100;
+        self.ram[self.i + 1] = (vx % 100) / 10;
+        self.ram[self.i + 2] = vx % 10;
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - Store registers V0 through Vx in memory starting at location I
+    fn op_fx55(&mut self, x: usize) {
+        for i in 0..x + 1 {
+            self.ram[self.i + i] = self.regs[i];
+        }
+        self.pc += OPCODE_SIZE;
+    }
+
+    // LD - Store registers V0 through Vx in memory starting at location I
+    fn op_fx65(&mut self, x: usize) {
+        for i in 0..x + 1 {
+            self.regs[i] = self.ram[self.i + i];
+        }
+        self.pc += OPCODE_SIZE;
     }
 }
