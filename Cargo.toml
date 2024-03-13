@@ -9,3 +9,4 @@ edition = "2021"
 
 thiserror = "1.0.57"
 rand = "0.8.5"
+sdl2 = "0.35"

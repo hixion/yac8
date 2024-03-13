@@ -1,9 +1,11 @@
 use crate::chip::font::FONT_SET;
 use rand::Rng;
+use std::fs::File;
+use std::io::prelude::*;
 
 const MEM_SIZE: usize = 0x1000;
-const SCREEN_WIDTH: usize = 64;
-const SCREEN_HEIGHT: usize = 32;
+pub const SCREEN_WIDTH: usize = 64;
+pub const SCREEN_HEIGHT: usize = 32;
 const OPCODE_SIZE: usize = 2;
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,7 @@ pub struct Chip8 {
     // auxiliar variables
     await_key: bool,
     keypad_reg: usize,
+    screen_drawed: bool,
 }
 
 impl Chip8 {
@@ -49,21 +52,47 @@ impl Chip8 {
             screen: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
             await_key: false,
             keypad_reg: 0,
+            screen_drawed: false,
         }
     }
 
-    pub fn init(&mut self) {
-        loop {
-            if self.await_key {
-                while self.await_key {}
+    pub fn load_rom(&mut self, rom: &str) {
+        let mut f = File::open(rom).unwrap();
+        let mut buffer = [0u8; 3588];
+
+        let _size = match f.read(&mut buffer) {
+            Ok(bytes_size) => bytes_size,
+            _ => 0,
+        };
+
+        // load program to memory
+        let mut addr = self.pc;
+        for byte in buffer {
+            if addr > 4095 {
+                break;
             }
-
-            let opcode = self.fetch(self.pc);
-            self.execute(opcode);
+            self.ram[addr] = byte;
+            addr += 1;
         }
     }
 
-    pub fn fetch(&self, addr: usize) -> usize {
+    pub fn emulate_cycle(&mut self) {
+        let opcode = self.fetch(self.pc);
+        self.execute(opcode);
+
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+
+        if self.sound_timer > 0 {
+            // if self.sound_timer == 1 {
+
+            // }
+            self.sound_timer -= 1;
+        }
+    }
+
+    fn fetch(&self, addr: usize) -> usize {
         // most significant byte
         let mbyte = self.ram[addr] as usize;
         // less significant byte
@@ -330,10 +359,11 @@ impl Chip8 {
                 // for each bit from the most significant to the lest
                 let cx = (self.regs[x] as usize + bit) % SCREEN_WIDTH;
                 let pixel = sprite >> (7 - bit) & 1;
-                self.regs[0x0F] |= pixel & self.screen[cx][cy];
-                self.screen[cx][cy] = pixel ^ self.screen[cx][cy];
+                self.regs[0x0F] |= pixel & self.screen[cy][cx];
+                self.screen[cy][cx] = pixel ^ self.screen[cy][cx];
             }
         }
+        self.screen_drawed = true;
         self.pc += OPCODE_SIZE;
     }
 
