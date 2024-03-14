@@ -1,2 +1,2 @@
 run:
-	cargo run roms/'Chip8 emulator Logo [Garstyciuks].ch8'
+	cargo run roms/jason.ch8

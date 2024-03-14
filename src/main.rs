@@ -1,5 +1,7 @@
 use sdl2::event::Event;
 use std::env;
+use std::thread;
+use std::time::Duration;
 use yac8::chip::core::Chip8;
 use yac8::chip::display::Displayer;
 
@@ -12,21 +14,31 @@ fn main() -> Result<(), String> {
     let rom = args.last().unwrap();
     let mut chip = Chip8::new();
     let mut displayer = Displayer::new()?;
+    let mut cpu_inst_exec = 0;
+    let sleep_duration = 1;
 
     chip.load_rom(&rom);
-    displayer.draw();
+    displayer.draw_background();
 
     'running: loop {
         chip.emulate_cycle();
 
         for event in displayer.events().poll_iter() {
             match event {
-                Event::Quit { .. } | Event::KeyDown { .. } => break 'running,
+                Event::Quit { .. } => break 'running,
                 _ => {}
             }
         }
 
-        displayer.keyset();
+        if chip.screen_drawed {
+            displayer.draw(&chip.screen)?;
+        }
+
+        chip.keypad = displayer.keyset();
+        cpu_inst_exec += 1;
+        if cpu_inst_exec == 60 {
+            thread::sleep(Duration::from_millis(sleep_duration));
+        }
     }
 
     Ok(())

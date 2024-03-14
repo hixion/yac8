@@ -1,5 +1,7 @@
 use super::core::{SCREEN_HEIGHT, SCREEN_WIDTH};
-use sdl2::{keyboard::Keycode, pixels::Color, render::WindowCanvas, sys::KeyCode, EventPump, Sdl};
+use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect, render::WindowCanvas, EventPump, Sdl};
+
+const SCALE_FACTOR: u32 = 20;
 
 pub struct Displayer {
     sdl_context: Sdl,
@@ -14,8 +16,8 @@ impl Displayer {
         let window = video_subsystem
             .window(
                 "CHIP 8",
-                SCREEN_WIDTH as u32 * 15,
-                SCREEN_HEIGHT as u32 * 20,
+                SCREEN_WIDTH as u32 * SCALE_FACTOR,
+                SCREEN_HEIGHT as u32 * SCALE_FACTOR,
             )
             .position_centered()
             .opengl()
@@ -35,9 +37,27 @@ impl Displayer {
         self.canvas.clear();
     }
 
-    pub fn draw(&mut self) {
-        self.draw_background();
+    pub fn draw(&mut self, pixels: &[[u8; SCREEN_WIDTH]; SCREEN_HEIGHT]) -> Result<(), String> {
+        for (y, row) in pixels.iter().enumerate() {
+            for (x, &col) in row.iter().enumerate() {
+                let x = (x as u32) * SCALE_FACTOR;
+                let y = (y as u32) * SCALE_FACTOR;
+
+                self.canvas.set_draw_color(self.color(col));
+                self.canvas
+                    .fill_rect(Rect::new(x as i32, y as i32, SCALE_FACTOR, SCALE_FACTOR))?;
+            }
+        }
+
         self.canvas.present();
+        Ok(())
+    }
+
+    fn color(&self, value: u8) -> Color {
+        match value {
+            0 => Color::BLACK,
+            _ => Color::GREEN,
+        }
     }
 
     pub fn events(&self) -> EventPump {
@@ -81,5 +101,11 @@ impl Displayer {
         }
 
         chip8_keys
+    }
+
+    pub fn clear(&mut self) {
+        self.canvas.set_draw_color(Color::BLACK);
+        self.canvas.clear();
+        self.canvas.present();
     }
 }

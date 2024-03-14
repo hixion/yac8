@@ -21,12 +21,12 @@ pub struct Chip8 {
     delay_timer: u8,
     sound_timer: u8,
     stack: [usize; 0x10],
-    keypad: [bool; 0x10],
-    screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+    pub keypad: [bool; 0x10],
+    pub screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
     // auxiliar variables
     await_key: bool,
     keypad_reg: usize,
-    screen_drawed: bool,
+    pub screen_drawed: bool,
 }
 
 impl Chip8 {
@@ -155,7 +155,7 @@ impl Chip8 {
             (0x0F, _, 0x03, 0x03) => self.op_fx33(x),
             (0x0F, _, 0x05, 0x05) => self.op_fx55(x),
             (0x0F, _, 0x06, 0x05) => self.op_fx65(x),
-            _ => unreachable!(),
+            _ => self.pc += OPCODE_SIZE,
         }
     }
 
