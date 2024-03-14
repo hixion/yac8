@@ -1,4 +1,5 @@
 use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 use std::env;
 use std::thread;
 use std::time::Duration;
@@ -18,14 +19,16 @@ fn main() -> Result<(), String> {
     let sleep_duration = 1;
 
     chip.load_rom(&rom);
-    displayer.draw_background();
 
     'running: loop {
         chip.emulate_cycle();
 
         for event in displayer.events().poll_iter() {
             match event {
-                Event::Quit { .. } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
                 _ => {}
             }
         }

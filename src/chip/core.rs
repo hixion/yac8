@@ -33,9 +33,7 @@ impl Chip8 {
     pub fn new() -> Self {
         let mut ram = [0; MEM_SIZE];
 
-        for i in 0..FONT_SET.len() {
-            ram[i] = FONT_SET[i];
-        }
+        ram[..FONT_SET.len()].copy_from_slice(&FONT_SET);
 
         Chip8 {
             i: 0,
