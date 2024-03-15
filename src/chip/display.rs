@@ -32,11 +32,6 @@ impl Displayer {
         })
     }
 
-    pub fn draw_background(&mut self) {
-        self.canvas.set_draw_color(Color::BLACK);
-        self.canvas.clear();
-    }
-
     pub fn draw(&mut self, pixels: &[[u8; SCREEN_WIDTH]; SCREEN_HEIGHT]) -> Result<(), String> {
         for (y, row) in pixels.iter().enumerate() {
             for (x, &col) in row.iter().enumerate() {
@@ -101,11 +96,5 @@ impl Displayer {
         }
 
         chip8_keys
-    }
-
-    pub fn clear(&mut self) {
-        self.canvas.set_draw_color(Color::BLACK);
-        self.canvas.clear();
-        self.canvas.present();
     }
 }

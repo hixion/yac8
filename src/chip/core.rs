@@ -9,7 +9,6 @@ pub const SCREEN_HEIGHT: usize = 32;
 const OPCODE_SIZE: usize = 2;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct Chip8 {
     i: usize,  // index register
     pc: usize, // program counter
@@ -83,9 +82,6 @@ impl Chip8 {
         }
 
         if self.sound_timer > 0 {
-            // if self.sound_timer == 1 {
-
-            // }
             self.sound_timer -= 1;
         }
     }
